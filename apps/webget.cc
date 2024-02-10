@@ -4,13 +4,25 @@
 #include <iostream>
 #include <span>
 #include <string>
+#include <string_view>
 
 using namespace std;
 
 void get_URL( const string& host, const string& path )
 {
-  cerr << "Function called: get_URL(" << host << ", " << path << ")\n";
-  cerr << "Warning: get_URL() has not been implemented yet.\n";
+  TCPSocket sock {};
+  sock.connect( Address( host, "http" ) );
+
+  sock.write( string_view( "GET " + path + " HTTP/1.1\r\n" ) );
+  sock.write( string_view( "Host: " + host + "\r\n" ) );
+  sock.write( string_view( "Connection: close\r\n\r\n" ) );
+
+  string buffer;
+  while ( not sock.eof() ) {
+    sock.read( buffer );
+    cout << buffer;
+  }
+  sock.close();
 }
 
 int main( int argc, char* argv[] )
