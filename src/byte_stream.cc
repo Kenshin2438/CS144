@@ -15,8 +15,8 @@ void Writer::push( string data )
     data = data.substr( 0, available_capacity() );
   }
 
-  stream_ += data;
-  bytes_pushed_ += data.size();
+  buf_ += data;
+  total_pushed_ += data.size();
 }
 
 void Writer::close()
@@ -26,27 +26,27 @@ void Writer::close()
 
 uint64_t Writer::available_capacity() const
 {
-  return capacity_ - stream_.size();
+  return capacity_ - buf_.size();
 }
 
 uint64_t Writer::bytes_pushed() const
 {
-  return bytes_pushed_;
+  return total_pushed_;
 }
 
 bool Reader::is_finished() const
 {
-  return closed_ and stream_.empty();
+  return closed_ and buf_.empty();
 }
 
 uint64_t Reader::bytes_popped() const
 {
-  return bytes_popped_;
+  return total_popped_;
 }
 
 string_view Reader::peek() const
 {
-  return stream_;
+  return buf_;
 }
 
 void Reader::pop( uint64_t len )
@@ -56,11 +56,11 @@ void Reader::pop( uint64_t len )
     return;
   }
 
-  stream_ = stream_.substr( len );
-  bytes_popped_ += len;
+  buf_ = buf_.substr( len );
+  total_popped_ += len;
 }
 
 uint64_t Reader::bytes_buffered() const
 {
-  return stream_.size();
+  return buf_.size();
 }
