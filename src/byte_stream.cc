@@ -14,8 +14,9 @@ void Writer::push( string data )
   if ( data.size() > available_capacity() ) {
     data = data.substr( 0, available_capacity() );
   }
+
   stream_ += data;
-  bytesPushed_ += data.size();
+  bytes_pushed_ += data.size();
 }
 
 void Writer::close()
@@ -30,7 +31,7 @@ uint64_t Writer::available_capacity() const
 
 uint64_t Writer::bytes_pushed() const
 {
-  return bytesPushed_;
+  return bytes_pushed_;
 }
 
 bool Reader::is_finished() const
@@ -40,7 +41,7 @@ bool Reader::is_finished() const
 
 uint64_t Reader::bytes_popped() const
 {
-  return bytesPopped_;
+  return bytes_popped_;
 }
 
 string_view Reader::peek() const
@@ -56,7 +57,7 @@ void Reader::pop( uint64_t len )
   }
 
   stream_ = stream_.substr( len );
-  bytesPopped_ += len;
+  bytes_popped_ += len;
 }
 
 uint64_t Reader::bytes_buffered() const
