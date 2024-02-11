@@ -2,6 +2,8 @@
 
 #include "byte_stream.hh"
 
+#include <map>
+
 class Reassembler
 {
 public:
@@ -42,4 +44,7 @@ public:
 
 private:
   ByteStream output_; // the Reassembler writes to this ByteStream
+  std::map<uint64_t, std::string> buf_ {};
+  uint64_t total_pending_ {};
+  bool end_check_ { false };
 };
