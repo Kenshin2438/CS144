@@ -2,6 +2,7 @@
 
 #include "byte_stream.hh"
 
+#include <cstdint>
 #include <map>
 
 class Reassembler
@@ -46,5 +47,8 @@ private:
   ByteStream output_; // the Reassembler writes to this ByteStream
   std::map<uint64_t, std::string> buf_ {};
   uint64_t total_pending_ {};
-  bool end_check_ { false };
+  bool end_flag_ {};
+
+  using mIterator = decltype(buf_)::iterator;
+  mIterator split( uint64_t pos );
 };

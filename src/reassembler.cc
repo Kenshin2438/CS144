@@ -1,53 +1,58 @@
 #include "reassembler.hh"
 
+#include <algorithm>
+#include <cstdint>
 #include <iterator>
 
 using namespace std;
 
+auto Reassembler::split( uint64_t pos ) -> mIterator
+{
+  auto it = buf_.lower_bound( pos );
+  if ( it != buf_.end() and it->first == pos ) {
+    return it;
+  }
+  if ( it == buf_.begin() ) {
+    return it;
+  }
+  const auto pit = prev( it );
+  if ( pit->first + pit->second.size() <= pos ) {
+    return it;
+  }
+  auto str = pit->second;
+  pit->second.resize( pos - pit->first );
+  str.erase( 0, pos - pit->first );
+  return buf_.emplace( pos, move( str ) ).first;
+}
+
 void Reassembler::insert( uint64_t first_index, string data, bool is_last_substring )
 {
-  const auto try_close = [&]() -> void {
-    if ( end_check_ and bytes_pending() == 0 ) {
+  if ( data.empty() ) { // No capacity limit
+    end_flag_ |= is_last_substring;
+    if ( end_flag_ and bytes_pending() == 0 ) {
       output_.writer().close();
     }
-  };
+    return;
+  }
 
-  if ( data.empty() ) { // No capacity limit
-    end_check_ |= is_last_substring;
-    return try_close();
-  } // special judement
-
-  const auto L = writer().bytes_pushed(); // Reassembler's internal storage: [L, R)
-  const auto R = L + writer().available_capacity();
-  if ( L >= R ) {
+  // Reassembler's internal storage: [unassembled_index, unacceptable_index)
+  const auto unassembled_index = writer().bytes_pushed();
+  const auto unacceptable_index = unassembled_index + writer().available_capacity();
+  if ( unassembled_index >= unacceptable_index ) {
     return; // available_capacity == 0
   }
-  if ( first_index + data.size() <= L or first_index >= R ) {
+  if ( first_index + data.size() <= unassembled_index or first_index >= unacceptable_index ) {
     return; // Out of ranger
   }
-  if ( first_index + data.size() > R ) { // Remove unacceptable bytes
-    data = data.substr( 0, R - first_index );
+  if ( first_index + data.size() > unacceptable_index ) { // Remove unacceptable bytes
+    data.resize( unacceptable_index - first_index );
     is_last_substring = false;
   }
-  if ( first_index < L ) { // Remove poped/buffered bytes
-    data = data.substr( L - first_index );
-    first_index = L;
+  if ( first_index < unassembled_index ) { // Remove poped/buffered bytes
+    data.erase( 0, unassembled_index - first_index );
+    first_index = unassembled_index;
   }
-  end_check_ |= is_last_substring;
-
-  const auto split = [&]( const uint64_t& pos ) {
-    auto it = buf_.lower_bound( pos );
-    if ( it != buf_.end() and it->first == pos )
-      return it;
-    if ( it == buf_.begin() )
-      return it;
-    const auto pit = prev( it );
-    if ( pit->first + pit->second.size() <= pos )
-      return it;
-    const auto str = pit->second;
-    pit->second = str.substr( 0, pos - pit->first );
-    return buf_.emplace( pos, str.substr( pos - pit->first ) ).first;
-  };
+  end_flag_ |= is_last_substring;
 
   if ( not buf_.empty() ) {
     auto it = split( first_index );
@@ -61,11 +66,13 @@ void Reassembler::insert( uint64_t first_index, string data, bool is_last_substr
   total_pending_ += data.size();
 
   while ( not buf_.empty() and buf_.begin()->first == writer().bytes_pushed() ) {
-    output_.writer().push( buf_.begin()->second );
     total_pending_ -= buf_.begin()->second.size();
+    output_.writer().push( move( buf_.begin()->second ) );
     buf_.erase( buf_.begin() );
   }
-  return try_close();
+  if ( end_flag_ and bytes_pending() == 0 ) {
+    output_.writer().close();
+  }
 }
 
 uint64_t Reassembler::bytes_pending() const
