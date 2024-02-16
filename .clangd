@@ -1,0 +1,18 @@
+# For more information, check out:
+#   - https://clangd.llvm.org/config
+#   - https://clang.llvm.org/extra/clang-tidy/checks/list.html
+---
+Diagnostics:
+  ClangTidy:
+    Add:
+      - clang-analyzer-*
+      - bugprone-*
+      - modernize-*
+      - performance-*
+      - misc-unused-*
+      - readability-*
+    Remove:
+      - modernize-use-trailing-return-type
+    CheckOptions:
+      readability-identifier-length.MinimumVariableNameLength: 2
+  UnusedIncludes: Strict
