@@ -1,8 +1,8 @@
 #include "byte_stream.hh"
 
-#include <algorithm>
 #include <cstdint>
 #include <string_view>
+#include <utility>
 
 using namespace std;
 
@@ -25,8 +25,8 @@ void Writer::push( string data )
   total_pushed_ += data.size();
   total_buffered_ += data.size();
 
-  stream_.emplace_back( move( data ) );
-  stream_view_.emplace_back( stream_.back() );
+  stream_.emplace( move( data ) );
+  stream_view_.emplace( stream_.back() );
 }
 
 void Writer::close()
@@ -69,8 +69,8 @@ void Reader::pop( uint64_t len )
       stream_view_.front().remove_prefix( len );
       break; // with len = 0
     }
-    stream_view_.pop_front();
-    stream_.pop_front();
+    stream_view_.pop();
+    stream_.pop();
     len -= size;
   }
 }
