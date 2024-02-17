@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <map>
+#include <optional>
 
 class Reassembler
 {
@@ -47,8 +48,8 @@ private:
   ByteStream output_; // the Reassembler writes to this ByteStream
   std::map<uint64_t, std::string> buf_ {};
   uint64_t total_pending_ {};
-  bool end_flag_ {};
+  std::optional<uint64_t> end_index_ {};
 
-  using mIterator = decltype(buf_)::iterator;
+  using mIterator = decltype( buf_ )::iterator;
   mIterator split( uint64_t pos );
 };

@@ -1,8 +1,8 @@
 #include "reassembler.hh"
 
-#include <algorithm>
 #include <cstdint>
 #include <iterator>
+#include <utility>
 
 using namespace std;
 
@@ -28,8 +28,10 @@ auto Reassembler::split( uint64_t pos ) -> mIterator
 void Reassembler::insert( uint64_t first_index, string data, bool is_last_substring )
 {
   if ( data.empty() ) { // No capacity limit
-    end_flag_ |= is_last_substring;
-    if ( end_flag_ and bytes_pending() == 0 ) {
+    if ( is_last_substring and ( not end_index_.has_value() ) ) {
+      end_index_.emplace( first_index );
+    }
+    if ( end_index_.has_value() and end_index_.value() == writer().bytes_pushed() ) {
       output_.writer().close();
     }
     return;
@@ -52,7 +54,10 @@ void Reassembler::insert( uint64_t first_index, string data, bool is_last_substr
     data.erase( 0, unassembled_index - first_index );
     first_index = unassembled_index;
   }
-  end_flag_ |= is_last_substring;
+
+  if ( is_last_substring and ( not end_index_.has_value() ) ) {
+    end_index_.emplace( first_index + data.size() );
+  }
 
   if ( not buf_.empty() ) {
     auto it = split( first_index );
@@ -62,15 +67,16 @@ void Reassembler::insert( uint64_t first_index, string data, bool is_last_substr
       it = buf_.erase( it );
     }
   }
-  buf_.emplace( first_index, data );
   total_pending_ += data.size();
+  buf_.emplace( first_index, move( data ) );
 
-  while ( not buf_.empty() and buf_.begin()->first == writer().bytes_pushed() ) {
+  while ( ( not buf_.empty() ) and buf_.begin()->first == writer().bytes_pushed() ) {
     total_pending_ -= buf_.begin()->second.size();
     output_.writer().push( move( buf_.begin()->second ) );
     buf_.erase( buf_.begin() );
   }
-  if ( end_flag_ and bytes_pending() == 0 ) {
+
+  if ( end_index_.has_value() and end_index_.value() == writer().bytes_pushed() ) {
     output_.writer().close();
   }
 }
