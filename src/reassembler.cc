@@ -12,7 +12,7 @@ auto Reassembler::split( uint64_t pos ) -> mIterator
   if ( it != buf_.end() and it->first == pos ) {
     return it;
   }
-  if ( it == buf_.begin() ) {
+  if ( it == buf_.begin() ) { // if buf_.empty() then begin() == end()
     return it;
   }
   const auto pit = prev( it );
@@ -59,13 +59,9 @@ void Reassembler::insert( uint64_t first_index, string data, bool is_last_substr
     end_index_.emplace( first_index + data.size() );
   }
 
-  if ( not buf_.empty() ) {
-    auto it = split( first_index );
-    const auto& pr = split( first_index + data.size() );
-    while ( it != pr ) {
-      total_pending_ -= it->second.size();
-      it = buf_.erase( it );
-    }
+  const auto upper { split( first_index + data.size() ) };
+  for ( auto it { split( first_index ) }; it != upper; it = buf_.erase( it ) ) {
+    total_pending_ -= it->second.size();
   }
   total_pending_ += data.size();
   buf_.emplace( first_index, move( data ) );

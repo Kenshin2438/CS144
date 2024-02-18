@@ -1,38 +1,41 @@
 #include "tcp_receiver.hh"
 #include "wrapping_integers.hh"
+#include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <utility>
 
 using namespace std;
 
 void TCPReceiver::receive( TCPSenderMessage message )
 {
-  if ( message.RST or writer().has_error() ) {
-    if ( not writer().has_error() )
-      reader().set_error();
+  if ( writer().has_error() ) {
+    return;
+  }
+  if ( message.RST ) {
+    reader().set_error();
     return;
   }
 
-  if ( not SYN_set_ ) { // Synchronization
+  if ( not zero_point_.has_value() ) {
     if ( not message.SYN ) {
       return;
     }
-    SYN_set_ = true;
-    zero_point_ = message.seqno;
+    zero_point_.emplace( message.seqno );
   }
 
-  const uint64_t checkpoint = writer().bytes_pushed() + SYN_set_ + writer().is_closed();
-  const uint64_t stream_index = message.seqno.unwrap( zero_point_, checkpoint ) - 1 + message.SYN;
-  reassembler_.insert( stream_index, message.payload, message.FIN );
+  const uint64_t checkpoint { writer().bytes_pushed() + 1 /* SYN */ }; // abs_seqno for expecting payload
+  const uint64_t absolute_seqno { message.seqno.unwrap( zero_point_.value(), checkpoint ) };
+  const uint64_t stream_index { absolute_seqno + static_cast<uint64_t>( message.SYN ) - 1 /* SYN */ };
+  reassembler_.insert( stream_index, move( message.payload ), message.FIN );
 }
 
 TCPReceiverMessage TCPReceiver::send() const
 {
-  const uint16_t window_size = writer().available_capacity() > UINT16_MAX
-                                 ? UINT16_MAX
-                                 : static_cast<uint16_t>( writer().available_capacity() );
-  const optional<Wrap32> ackno
-    = SYN_set_ ? Wrap32::wrap( writer().bytes_pushed() + SYN_set_ + writer().is_closed(), zero_point_ )
-               : optional<Wrap32> {};
-  return { ackno, window_size, writer().has_error() };
+  const uint16_t window_size = min( writer().available_capacity(), uint64_t { UINT16_MAX } );
+  if ( not zero_point_.has_value() ) {
+    return { {}, window_size, writer().has_error() };
+  }
+  const uint64_t absolute_seqno = writer().bytes_pushed() + 1 + static_cast<uint64_t>( writer().is_closed() );
+  return { Wrap32::wrap( absolute_seqno, zero_point_.value() ), window_size, writer().has_error() };
 }
