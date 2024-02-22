@@ -11,12 +11,36 @@
 #include <optional>
 #include <queue>
 
+class RetransmissionTimer
+{
+public:
+  explicit RetransmissionTimer( uint64_t initial_RTO_ms ) : RTO_ms_( initial_RTO_ms ) {}
+
+  [[nodiscard]] constexpr auto is_active() const noexcept -> bool { return is_active_; }
+  [[nodiscard]] constexpr auto is_expired() const noexcept -> bool { return is_active_ and timer_ >= RTO_ms_; }
+  constexpr auto reset() noexcept -> void { timer_ = 0; }
+  constexpr auto exponential_backoff() noexcept -> void { RTO_ms_ *= 2; }
+  constexpr auto reload( uint64_t initial_RTO_ms ) noexcept -> void { RTO_ms_ = initial_RTO_ms, reset(); };
+  constexpr auto start() noexcept -> void { is_active_ = true, reset(); }
+  constexpr auto stop() noexcept -> void { is_active_ = false, reset(); }
+  constexpr auto tick( uint64_t ms_since_last_tick ) noexcept -> RetransmissionTimer&
+  {
+    timer_ += is_active_ ? ms_since_last_tick : 0;
+    return *this;
+  }
+
+private:
+  bool is_active_ {};
+  uint64_t RTO_ms_;
+  uint64_t timer_ {};
+};
+
 class TCPSender
 {
 public:
   /* Construct TCP sender with given default Retransmission Timeout and possible ISN */
   TCPSender( ByteStream&& input, Wrap32 isn, uint64_t initial_RTO_ms )
-    : input_( std::move( input ) ), isn_( isn ), initial_RTO_ms_( initial_RTO_ms )
+    : input_( std::move( input ) ), isn_( isn ), initial_RTO_ms_( initial_RTO_ms ), timer_( initial_RTO_ms )
   {}
 
   /* Generate an empty TCPSenderMessage */
@@ -48,4 +72,17 @@ private:
   ByteStream input_;
   Wrap32 isn_;
   uint64_t initial_RTO_ms_;
+
+  RetransmissionTimer timer_;
+
+  bool SYN_sent_ {};
+  bool FIN_sent_ {};
+
+  uint64_t next_abs_seqno_ {};
+  uint64_t ack_abs_seqno_ {};
+  uint16_t window_size_ { 1 };
+  std::queue<TCPSenderMessage> outstanding_message_ {};
+
+  uint64_t total_outstanding_ {};
+  uint64_t total_retransmission_ {};
 };
