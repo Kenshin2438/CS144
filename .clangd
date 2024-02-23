@@ -2,8 +2,6 @@
 #   - https://clangd.llvm.org/config
 #   - https://clang.llvm.org/extra/clang-tidy/checks/list.html
 ---
-If:
-  PathMatch: [src/.*\.cc, src/.*\.hh]
 Diagnostics:
   ClangTidy:
     Add:
