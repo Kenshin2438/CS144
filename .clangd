@@ -13,8 +13,10 @@ Diagnostics:
       - readability-*
     Remove:
       - modernize-use-trailing-return-type
-    CheckOptions:
-      readability-identifier-length.MinimumVariableNameLength: 2
+      - readability-magic-numbers
+      - readability-identifier-length
+    # CheckOptions:
+    #   readability-identifier-length.MinimumVariableNameLength: 2
   UnusedIncludes: Strict
 InlayHints:
   Designators: Yes
