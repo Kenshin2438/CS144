@@ -1,7 +1,13 @@
 #include "router.hh"
 
+#include <bit>
+#include <cstddef>
+#include <cstdint>
 #include <iostream>
 #include <limits>
+#include <optional>
+#include <ranges>
+#include <utility>
 
 using namespace std;
 
@@ -20,11 +26,41 @@ void Router::add_route( const uint32_t route_prefix,
        << static_cast<int>( prefix_length ) << " => " << ( next_hop.has_value() ? next_hop->ip() : "(direct)" )
        << " on interface " << interface_num << "\n";
 
-  // Your code here.
+  routing_table_[prefix_length][rotr( route_prefix, 32 - prefix_length )] = { interface_num, next_hop };
 }
 
 // Go through all the interfaces, and route every incoming datagram to its proper outgoing interface.
 void Router::route()
 {
-  // Your code here.
+  for ( const auto& interface : _interfaces ) {
+    auto&& datagrams_received { interface->datagrams_received() };
+    while ( not datagrams_received.empty() ) {
+      InternetDatagram datagram { move( datagrams_received.front() ) };
+      datagrams_received.pop();
+
+      if ( datagram.header.ttl <= 1 ) {
+        continue;
+      }
+      datagram.header.ttl -= 1;
+      datagram.header.compute_checksum();
+
+      const optional<info>& mp = match( datagram.header.dst );
+      if ( not mp.has_value() ) {
+        continue;
+      }
+      const auto& [num, next_hop] { mp.value() };
+      _interfaces[num]->send_datagram( datagram,
+                                       next_hop.value_or( Address::from_ipv4_numeric( datagram.header.dst ) ) );
+    }
+  }
+}
+
+[[nodiscard]] auto Router::match( uint32_t addr ) const -> optional<info>
+{
+  for ( const auto& mp : routing_table_ | ranges::views::reverse ) {
+    if ( mp.contains( addr >>= 1 ) ) { // NOLINT
+      return mp.at( addr );
+    }
+  }
+  return nullopt;
 }

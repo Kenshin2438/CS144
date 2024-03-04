@@ -1,8 +1,14 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
+#include <utility>
+#include <vector>
 
+#include "address.hh"
 #include "exception.hh"
 #include "network_interface.hh"
 
@@ -35,4 +41,9 @@ public:
 private:
   // The router's collection of network interfaces
   std::vector<std::shared_ptr<NetworkInterface>> _interfaces {};
+
+  using info = std::pair<size_t, std::optional<Address>>;
+  std::array<std::map<uint32_t, info>, 32> routing_table_ {};
+
+  [[nodiscard]] auto match( uint32_t ) const -> std::optional<info>;
 };
