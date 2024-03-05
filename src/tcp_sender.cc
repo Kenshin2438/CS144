@@ -1,9 +1,11 @@
 #include "tcp_sender.hh"
 #include "tcp_config.hh"
 #include "wrapping_integers.hh"
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 #include <utility>
 
 using namespace std;
@@ -25,22 +27,23 @@ void TCPSender::push( const TransmitFunction& transmit )
       break; // Is finished.
     }
 
-    auto msg = make_empty_message();
+    auto msg { make_empty_message() };
     if ( not SYN_sent_ ) {
       msg.SYN = true;
       SYN_sent_ = true;
     }
 
-    const uint64_t remaining = ( window_size_ == 0 ? 1 : window_size_ ) - total_outstanding_;
-    const size_t len = min( TCPConfig::MAX_PAYLOAD_SIZE, remaining - msg.sequence_length() );
-    auto& payload { msg.payload };
+    const uint64_t remaining { ( window_size_ == 0 ? 1 : window_size_ ) - total_outstanding_ };
+    const size_t len { min( TCPConfig::MAX_PAYLOAD_SIZE, remaining - msg.sequence_length() ) };
+    auto&& payload { msg.payload };
     while ( reader().bytes_buffered() != 0U and payload.size() < len ) {
-      auto view = reader().peek();
+      string_view view { reader().peek() };
       view = view.substr( 0, len - payload.size() );
       payload += view;
       input_.reader().pop( view.size() );
     }
-    if ( ( not FIN_sent_ ) and remaining > msg.sequence_length() and reader().is_finished() ) {
+
+    if ( not FIN_sent_ and remaining > msg.sequence_length() and reader().is_finished() ) {
       msg.FIN = true;
       FIN_sent_ = true;
     }

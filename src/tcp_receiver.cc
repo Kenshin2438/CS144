@@ -1,8 +1,7 @@
 #include "tcp_receiver.hh"
 #include "wrapping_integers.hh"
-#include <algorithm>
+
 #include <cstdint>
-#include <optional>
 #include <utility>
 
 using namespace std;
@@ -32,10 +31,12 @@ void TCPReceiver::receive( TCPSenderMessage message )
 
 TCPReceiverMessage TCPReceiver::send() const
 {
-  const uint16_t window_size = min( writer().available_capacity(), uint64_t { UINT16_MAX } );
-  if ( not zero_point_.has_value() ) {
-    return { {}, window_size, writer().has_error() };
+  const uint16_t window_size { writer().available_capacity() > UINT16_MAX
+                                 ? static_cast<uint16_t>( UINT16_MAX )
+                                 : static_cast<uint16_t>( writer().available_capacity() ) };
+  if ( zero_point_.has_value() ) {
+    const uint64_t ack_for_seqno { writer().bytes_pushed() + 1 + static_cast<uint64_t>( writer().is_closed() ) };
+    return { Wrap32::wrap( ack_for_seqno, zero_point_.value() ), window_size, writer().has_error() };
   }
-  const uint64_t absolute_seqno = writer().bytes_pushed() + 1 + static_cast<uint64_t>( writer().is_closed() );
-  return { Wrap32::wrap( absolute_seqno, zero_point_.value() ), window_size, writer().has_error() };
+  return { nullopt, window_size, writer().has_error() };
 }

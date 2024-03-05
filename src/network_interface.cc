@@ -1,30 +1,29 @@
-#include <iostream>
-#include <iterator>
-#include <utility>
-
+#include "network_interface.hh"
 #include "address.hh"
 #include "arp_message.hh"
 #include "ethernet_frame.hh"
 #include "ethernet_header.hh"
 #include "exception.hh"
 #include "ipv4_datagram.hh"
-#include "network_interface.hh"
 #include "parser.hh"
+
+#include <iostream>
+#include <ranges>
+#include <utility>
+#include <vector>
 
 using namespace std;
 
-static ARPMessage make_arp( const uint16_t& opcode,
-                            const EthernetAddress& sender_ethernet_address,
-                            const Address& sender_ip_address,
-                            const EthernetAddress& target_ethernet_address,
-                            const Address& target_ip_address )
+auto NetworkInterface::make_arp( const uint16_t opcode,
+                                 const EthernetAddress& target_ethernet_address,
+                                 const uint32_t target_ip_address ) const noexcept -> ARPMessage
 {
   ARPMessage arp;
   arp.opcode = opcode;
-  arp.sender_ethernet_address = sender_ethernet_address;
-  arp.sender_ip_address = sender_ip_address.ipv4_numeric();
+  arp.sender_ethernet_address = ethernet_address_;
+  arp.sender_ip_address = ip_address_.ipv4_numeric();
   arp.target_ethernet_address = target_ethernet_address;
-  arp.target_ip_address = target_ip_address.ipv4_numeric();
+  arp.target_ip_address = target_ip_address;
   return arp;
 }
 
@@ -49,17 +48,18 @@ NetworkInterface::NetworkInterface( string_view name,
 //! can be converted to a uint32_t (raw 32-bit IP address) by using the Address::ipv4_numeric() method.
 void NetworkInterface::send_datagram( const InternetDatagram& dgram, const Address& next_hop )
 {
-  if ( ARP_cache_.contains( next_hop ) ) {
-    const EthernetAddress& dst { ARP_cache_[next_hop].first };
+  const AddressNumeric next_hop_numeric { next_hop.ipv4_numeric() };
+  if ( ARP_cache_.contains( next_hop_numeric ) ) {
+    const EthernetAddress& dst { ARP_cache_[next_hop_numeric].first };
     return transmit( { { dst, ethernet_address_, EthernetHeader::TYPE_IPv4 }, serialize( dgram ) } );
   }
-
-  dgrams_waitting_[next_hop].emplace_back( dgram );
-  if ( not waitting_timer_.contains( next_hop ) ) {
-    waitting_timer_.emplace( next_hop, NetworkInterface::Timer {} );
-    const auto arp_request { make_arp( ARPMessage::OPCODE_REQUEST, ethernet_address_, ip_address_, {}, next_hop ) };
-    transmit( { { ETHERNET_BROADCAST, ethernet_address_, EthernetHeader::TYPE_ARP }, serialize( arp_request ) } );
+  dgrams_waitting_[next_hop_numeric].emplace_back( dgram );
+  if ( waitting_timer_.contains( next_hop_numeric ) ) {
+    return;
   }
+  waitting_timer_.emplace( next_hop_numeric, NetworkInterface::Timer {} );
+  const ARPMessage arp_request { make_arp( ARPMessage::OPCODE_REQUEST, {}, next_hop_numeric ) };
+  transmit( { { ETHERNET_BROADCAST, ethernet_address_, EthernetHeader::TYPE_ARP }, serialize( arp_request ) } );
 }
 
 //! \param[in] frame the incoming Ethernet frame
@@ -83,21 +83,20 @@ void NetworkInterface::recv_frame( const EthernetFrame& frame )
       return;
     }
 
-    const Address& next_hop { Address::from_ipv4_numeric( msg.sender_ip_address ) };
-    const EthernetAddress& dst { msg.sender_ethernet_address };
-    ARP_cache_[next_hop] = { dst, NetworkInterface::Timer {} };
+    const AddressNumeric sender_ip { msg.sender_ip_address };
+    const EthernetAddress sender_eth { msg.sender_ethernet_address };
+    ARP_cache_[sender_ip] = { sender_eth, Timer {} };
 
     if ( msg.opcode == ARPMessage::OPCODE_REQUEST and msg.target_ip_address == ip_address_.ipv4_numeric() ) {
-      const auto arp_reply { make_arp( ARPMessage::OPCODE_REPLY, ethernet_address_, ip_address_, dst, next_hop ) };
-      transmit( { { dst, ethernet_address_, EthernetHeader::TYPE_ARP }, serialize( arp_reply ) } );
+      const ARPMessage arp_reply { make_arp( ARPMessage::OPCODE_REPLY, sender_eth, sender_ip ) };
+      transmit( { { sender_eth, ethernet_address_, EthernetHeader::TYPE_ARP }, serialize( arp_reply ) } );
     }
-
-    if ( dgrams_waitting_.contains( next_hop ) ) {
-      for ( const auto& dgram : dgrams_waitting_[next_hop] ) {
-        transmit( { { dst, ethernet_address_, EthernetHeader::TYPE_IPv4 }, serialize( dgram ) } );
+    if ( dgrams_waitting_.contains( sender_ip ) ) {
+      for ( const auto& dgram : dgrams_waitting_[sender_ip] ) {
+        transmit( { { sender_eth, ethernet_address_, EthernetHeader::TYPE_IPv4 }, serialize( dgram ) } );
       }
-      dgrams_waitting_.erase( next_hop );
-      waitting_timer_.erase( next_hop );
+      dgrams_waitting_.erase( sender_ip );
+      waitting_timer_.erase( sender_ip );
     }
   }
 }
@@ -105,21 +104,11 @@ void NetworkInterface::recv_frame( const EthernetFrame& frame )
 //! \param[in] ms_since_last_tick the number of milliseconds since the last call to this method
 void NetworkInterface::tick( const size_t ms_since_last_tick )
 {
-  for ( auto it = ARP_cache_.begin(); it != ARP_cache_.end(); ) {
-    auto&& [_, timer] { it->second };
-    if ( timer.tick( ms_since_last_tick ).expired( NetworkInterface::Timer::ARP_ENTRY_TTL_ms ) ) {
-      it = ARP_cache_.erase( it );
-    } else {
-      it = next( it );
-    }
-  }
+  erase_if( ARP_cache_, [&]( auto&& item ) noexcept -> bool {
+    return item.second.second.tick( ms_since_last_tick ).expired( ARP_ENTRY_TTL_ms );
+  } );
 
-  for ( auto it = waitting_timer_.begin(); it != waitting_timer_.end(); ) {
-    auto&& timer { it->second };
-    if ( timer.tick( ms_since_last_tick ).expired( NetworkInterface::Timer::ARP_RESPONSE_TTL_ms ) ) {
-      it = waitting_timer_.erase( it );
-    } else {
-      it = next( it );
-    }
-  }
+  erase_if( waitting_timer_, [&]( auto&& item ) noexcept -> bool {
+    return item.second.tick( ms_since_last_tick ).expired( ARP_RESPONSE_TTL_ms );
+  } );
 }

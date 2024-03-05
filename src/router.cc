@@ -2,12 +2,9 @@
 
 #include <bit>
 #include <cstddef>
-#include <cstdint>
 #include <iostream>
-#include <limits>
 #include <optional>
 #include <ranges>
-#include <utility>
 
 using namespace std;
 
@@ -44,7 +41,7 @@ void Router::route()
       datagram.header.ttl -= 1;
       datagram.header.compute_checksum();
 
-      const optional<info>& mp = match( datagram.header.dst );
+      const optional<info>& mp { match( datagram.header.dst ) };
       if ( not mp.has_value() ) {
         continue;
       }
@@ -55,12 +52,10 @@ void Router::route()
   }
 }
 
-[[nodiscard]] auto Router::match( uint32_t addr ) const -> optional<info>
+[[nodiscard]] auto Router::match( uint32_t addr ) const noexcept -> optional<info>
 {
-  for ( const auto& mp : routing_table_ | ranges::views::reverse ) {
-    if ( mp.contains( addr >>= 1 ) ) { // NOLINT
-      return mp.at( addr );
-    }
-  }
-  return nullopt;
+  auto adaptor = views::filter( [&addr]( const auto& mp ) { return mp.contains( addr >>= 1 ); } )
+                 | views::transform( [&addr]( const auto& mp ) -> info { return mp.at( addr ); } );
+  auto res { routing_table_ | views::reverse | adaptor | views::take( 1 ) }; // just kidding
+  return res.empty() ? nullopt : optional<info> { res.front() };
 }

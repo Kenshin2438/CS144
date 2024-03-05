@@ -1,7 +1,5 @@
 #include "byte_stream.hh"
 
-#include <cstdint>
-#include <string_view>
 #include <utility>
 
 using namespace std;
@@ -64,7 +62,7 @@ void Reader::pop( uint64_t len )
   total_buffered_ -= len;
   total_popped_ += len;
   while ( len != 0U ) {
-    const auto size = stream_.front().size() - removed_prefix_;
+    const uint64_t& size { stream_.front().size() - removed_prefix_ };
     if ( len < size ) {
       removed_prefix_ += len;
       break; // with len = 0;

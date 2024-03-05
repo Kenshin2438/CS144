@@ -1,17 +1,17 @@
 #pragma once
 
+#include "address.hh"
+#include "arp_message.hh"
+#include "ethernet_frame.hh"
+#include "ethernet_header.hh"
+#include "ipv4_datagram.hh"
+
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <queue>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-#include "address.hh"
-#include "ethernet_frame.hh"
-#include "ethernet_header.hh"
-#include "ipv4_datagram.hh"
 
 // A "network interface" that connects IP (the internet layer, or network layer)
 // with Ethernet (the network access layer, or link layer).
@@ -89,21 +89,20 @@ private:
   // Datagrams that have been received
   std::queue<InternetDatagram> datagrams_received_ {};
 
+  auto make_arp( uint16_t, const EthernetAddress&, uint32_t ) const noexcept -> ARPMessage;
+
+  static constexpr size_t ARP_ENTRY_TTL_ms { 30'000 };
+  static constexpr size_t ARP_RESPONSE_TTL_ms { 5'000 };
+
   struct Timer
   {
-    static constexpr size_t ARP_ENTRY_TTL_ms { 30'000 };
-    static constexpr size_t ARP_RESPONSE_TTL_ms { 5'000 };
     size_t _ms {};
     constexpr Timer& tick( const size_t& ms_since_last_tick ) noexcept { return _ms += ms_since_last_tick, *this; }
     [[nodiscard]] constexpr bool expired( const size_t& TTL_ms ) const noexcept { return _ms >= TTL_ms; }
   };
 
-  struct AddressHash
-  {
-    size_t operator()( const Address& addr ) const { return std::hash<uint32_t> {}( addr.ipv4_numeric() ); }
-  };
-
-  std::unordered_map<Address, std::vector<InternetDatagram>, AddressHash> dgrams_waitting_ {};
-  std::unordered_map<Address, Timer, AddressHash> waitting_timer_ {};
-  std::unordered_map<Address, std::pair<EthernetAddress, Timer>, AddressHash> ARP_cache_ {};
+  using AddressNumeric = decltype( ip_address_.ipv4_numeric() );
+  std::unordered_map<AddressNumeric, std::vector<InternetDatagram>> dgrams_waitting_ {};
+  std::unordered_map<AddressNumeric, Timer> waitting_timer_ {};
+  std::unordered_map<AddressNumeric, std::pair<EthernetAddress, Timer>> ARP_cache_ {};
 };
