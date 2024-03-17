@@ -52,6 +52,5 @@ private:
 
   std::optional<uint64_t> end_index_ {};
 
-  using mIterator = std::map<uint64_t, std::string>::const_iterator;
-  auto split( uint64_t pos ) noexcept -> mIterator;
+  auto split( uint64_t pos ) noexcept;
 };

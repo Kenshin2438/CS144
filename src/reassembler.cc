@@ -1,14 +1,11 @@
 #include "reassembler.hh"
 
 #include <algorithm>
-#include <iterator>
 #include <ranges>
-#include <string_view>
-#include <utility>
 
 using namespace std;
 
-auto Reassembler::split( uint64_t pos ) noexcept -> mIterator
+auto Reassembler::split( uint64_t pos ) noexcept
 {
   auto it { buf_.lower_bound( pos ) };
   if ( it != buf_.end() and it->first == pos ) {
@@ -17,14 +14,13 @@ auto Reassembler::split( uint64_t pos ) noexcept -> mIterator
   if ( it == buf_.begin() ) { // if buf_.empty() then begin() == end()
     return it;
   }
-  if ( const auto& pit { prev( it ) }; pit->first + size( pit->second ) > pos ) {
-    string str { pit->second };
+  if ( const auto pit { prev( it ) }; pit->first + size( pit->second ) > pos ) {
+    const auto res = buf_.emplace_hint( it, pos, pit->second.substr( pos - pit->first ) );
     pit->second.resize( pos - pit->first );
-    str.erase( 0, pos - pit->first );
-    return buf_.insert( pit, { pos, move( str ) } );
+    return res;
   }
   return it;
-}
+};
 
 void Reassembler::insert( uint64_t first_index, string data, bool is_last_substring )
 {
@@ -46,8 +42,8 @@ void Reassembler::insert( uint64_t first_index, string data, bool is_last_substr
   }
 
   // Reassembler's internal storage: [unassembled_index, unacceptable_index)
-  const uint64_t& unassembled_index { writer().bytes_pushed() };
-  const uint64_t& unacceptable_index { unassembled_index + writer().available_capacity() };
+  const uint64_t unassembled_index { writer().bytes_pushed() };
+  const uint64_t unacceptable_index { unassembled_index + writer().available_capacity() };
   if ( first_index + size( data ) <= unassembled_index or first_index >= unacceptable_index ) {
     return; // Out of ranger
   }
@@ -65,13 +61,12 @@ void Reassembler::insert( uint64_t first_index, string data, bool is_last_substr
   }
 
   // Can be optimizated !!!
-  const auto& upper { split( first_index + size( data ) ) };
-  const auto& lower { split( first_index ) };
-  ranges::for_each( ranges::subrange { lower, upper } | views::values,
-                    [&]( string_view str ) { total_pending_ -= str.size(); } );
-  buf_.erase( lower, upper );
+  const auto upper { split( first_index + size( data ) ) };
+  const auto lower { split( first_index ) };
+  ranges::for_each( ranges::subrange( lower, upper ) | views::values,
+                    [&]( const auto& str ) { total_pending_ -= str.size(); } );
   total_pending_ += size( data );
-  buf_.emplace( first_index, move( data ) );
+  buf_.emplace_hint( buf_.erase( lower, upper ), first_index, move( data ) );
 
   while ( not buf_.empty() ) {
     auto&& [index, payload] { *buf_.begin() };
